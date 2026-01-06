@@ -6,7 +6,7 @@
 
 这是一个用于 Home Assistant 的自定义集成插件，专为**中国大陆地区**使用 **“松下智能家电” (Panasonic Smart China)** 进行控制的空调设备开发。
 
-> 💡 **特别致谢**：本项目由开发者与 Google **Gemini 3 Pro** 深度协作完成。从工程搭建、设备 Token 算法破解、到复杂的 Read-Modify-Write 原子控制逻辑，均由 AI 辅助实现。
+> 💡 **特别致谢**：本项目由开发者与 Google **Gemini 3 Pro** 深度协作完成。从工程搭建、设备 Token 算法破解、到复杂的 Read-Modify-Write 原子控制逻辑，均由 AI 辅助实现。(还有这个README)
 
 > 💡 **特别致谢**：登陆算法由arthurfsy和不知名的逆向大佬提供。
 
