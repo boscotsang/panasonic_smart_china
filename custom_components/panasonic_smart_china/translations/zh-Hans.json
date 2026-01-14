@@ -11,17 +11,18 @@
       },
       "device": {
         "title": "配置设备",
-        "description": "成功获取设备列表！请选择要添加的空调及相关配置。",
+        "description": "成功获取设备列表！请选择要添加的设备及相关配置。\n系统已自动检测设备类型，如检测不准确请手动修正。",
         "data": {
-          "deviceId": "选择空调设备",
-          "controller_model": "线控器/遥控器型号",
-          "sensor_entity_id": "关联室温传感器 (可选)"
+          "deviceId": "选择设备",
+          "device_type": "设备类型",
+          "controller_model": "线控器/遥控器型号 (仅空调)",
+          "sensor_entity_id": "关联室温传感器 (仅空调，可选)"
         }
       }
     },
     "error": {
       "cannot_connect": "登录失败：请检查账号密码或网络连接",
-      "no_devices_found": "未找到设备：请确保账号下已绑定空调",
+      "no_devices_found": "未找到设备：请确保账号下已绑定设备",
       "token_generation_failed": "Token 生成失败：设备 ID 格式不正确",
       "all_devices_configured": "所有设备均已添加，无需重复配置"
     },
@@ -34,6 +35,21 @@
     "climate": {
       "panasonic_ac": {
         "name": "松下空调"
+      }
+    },
+    "humidifier": {
+      "panasonic_humidifier": {
+        "name": "松下加湿器",
+        "state_attributes": {
+          "mode": {
+            "state": {
+              "auto": "自动",
+              "continuous": "连续",
+              "sleep": "睡眠",
+              "interval": "间歇"
+            }
+          }
+        }
       }
     }
   }

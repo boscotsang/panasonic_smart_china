@@ -19,8 +19,9 @@ from homeassistant.helpers.event import async_track_time_interval
 
 from .const import (
     CONF_USR_ID, CONF_DEVICE_ID, CONF_TOKEN, CONF_SSID, 
-    CONF_SENSOR_ID, CONF_CONTROLLER_MODEL, 
-    SUPPORTED_CONTROLLERS, FAN_MUTE, FAN_MIN, FAN_MAX
+    CONF_SENSOR_ID, CONF_CONTROLLER_MODEL, CONF_DEVICE_TYPE,
+    SUPPORTED_CONTROLLERS, FAN_MUTE, FAN_MIN, FAN_MAX,
+    DEVICE_TYPE_AC, DEVICE_TYPE_HUMIDIFIER
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -34,6 +35,12 @@ POLLING_INTERVAL = timedelta(seconds=15)
 async def async_setup_entry(hass, entry, async_add_entities):
     """Setup climate entity."""
     config = entry.data
+    
+    # 仅为空调类型设备创建实体 (跳过加湿器)
+    device_type = config.get(CONF_DEVICE_TYPE, DEVICE_TYPE_AC)
+    if device_type == DEVICE_TYPE_HUMIDIFIER:
+        return
+    
     async_add_entities([PanasonicACEntity(hass, config, entry.title)])
 
 class PanasonicACEntity(ClimateEntity):

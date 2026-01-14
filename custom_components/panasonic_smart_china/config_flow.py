@@ -9,8 +9,8 @@ from homeassistant.const import CONF_USERNAME, CONF_PASSWORD
 
 from .const import (
     DOMAIN, CONF_USR_ID, CONF_DEVICE_ID, CONF_TOKEN, 
-    CONF_SSID, CONF_SENSOR_ID, CONF_CONTROLLER_MODEL,
-    SUPPORTED_CONTROLLERS
+    CONF_SSID, CONF_SENSOR_ID, CONF_CONTROLLER_MODEL, CONF_DEVICE_TYPE,
+    SUPPORTED_CONTROLLERS, DEVICE_TYPE_AC, DEVICE_TYPE_HUMIDIFIER
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -99,6 +99,26 @@ class PanasonicConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             errors=errors,
         )
 
+    def _detect_device_type(self, device_id: str, device_info: dict) -> str:
+        """检测设备类型：空调或加湿器"""
+        device_name = device_info.get("deviceName", "").lower()
+        device_id_lower = device_id.lower()
+        
+        # 通过设备名称识别加湿器
+        humidifier_keywords = ["加湿", "humidifier", "hum", "湿度"]
+        for keyword in humidifier_keywords:
+            if keyword in device_name:
+                return DEVICE_TYPE_HUMIDIFIER
+        
+        # 通过设备ID前缀识别(松下加湿器可能使用FV或HUM前缀)
+        humidifier_prefixes = ["fv", "hum", "fvrzm", "fvrjm"]
+        for prefix in humidifier_prefixes:
+            if device_id_lower.startswith(prefix):
+                return DEVICE_TYPE_HUMIDIFIER
+        
+        # 默认认为是空调
+        return DEVICE_TYPE_AC
+
     async def async_step_device(self, user_input=None):
         """步骤2: 选择设备"""
         errors = {}
@@ -106,12 +126,16 @@ class PanasonicConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         # 获取已添加的设备，防止重复
         existing_ids = self._async_current_ids()
         
-        # 构建可选设备列表 (排除已存在的)
+        # 构建可选设备列表 (排除已存在的)，并检测设备类型
         available_devices = {}
+        device_types = {}
         for did, info in self._devices.items():
-            # 注意：这里的 unique_id 必须与 climate.py 中保持一致
+            # 注意：这里的 unique_id 必须与 climate.py/humidifier.py 中保持一致
             if f"panasonic_{did}" not in existing_ids:
-                available_devices[did] = f"{info['deviceName']} ({did})"
+                detected_type = self._detect_device_type(did, info)
+                type_label = "加湿器" if detected_type == DEVICE_TYPE_HUMIDIFIER else "空调"
+                available_devices[did] = f"{info['deviceName']} [{type_label}] ({did})"
+                device_types[did] = detected_type
 
         if not available_devices:
             return self.async_abort(reason="all_devices_configured")
@@ -119,33 +143,47 @@ class PanasonicConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             selected_dev_id = user_input[CONF_DEVICE_ID]
             dev_info = self._devices.get(selected_dev_id)
-            dev_name = dev_info.get("deviceName", "Panasonic AC")
+            dev_name = dev_info.get("deviceName", "Panasonic Device")
             
-            token = self._generate_token(selected_dev_id)
+            # 用户可手动指定设备类型，或使用自动检测的结果
+            selected_type = user_input.get(CONF_DEVICE_TYPE, device_types.get(selected_dev_id, DEVICE_TYPE_AC))
+            
+            token = self._generate_token(selected_dev_id, selected_type)
             if not token:
                 errors["base"] = "token_generation_failed"
             else:
-                return self.async_create_entry(
-                    title=dev_name,
-                    data={
-                        CONF_USR_ID: self._login_data[CONF_USR_ID],
-                        CONF_SSID: self._login_data[CONF_SSID],
-                        CONF_DEVICE_ID: selected_dev_id,
-                        CONF_TOKEN: token,
-                        CONF_SENSOR_ID: user_input[CONF_SENSOR_ID],
-                        CONF_CONTROLLER_MODEL: user_input[CONF_CONTROLLER_MODEL], 
-                    }
-                )
+                # 根据设备类型构建配置数据
+                data = {
+                    CONF_USR_ID: self._login_data[CONF_USR_ID],
+                    CONF_SSID: self._login_data[CONF_SSID],
+                    CONF_DEVICE_ID: selected_dev_id,
+                    CONF_TOKEN: token,
+                    CONF_DEVICE_TYPE: selected_type,
+                }
+                
+                if selected_type == DEVICE_TYPE_AC:
+                    # 空调需要额外配置
+                    data[CONF_SENSOR_ID] = user_input.get(CONF_SENSOR_ID, "")
+                    data[CONF_CONTROLLER_MODEL] = user_input.get(CONF_CONTROLLER_MODEL, "CZ-RD501DW2")
+                
+                return self.async_create_entry(title=dev_name, data=data)
 
         # 构建控制器列表
         controller_options = {k: v["name"] for k, v in SUPPORTED_CONTROLLERS.items()}
+        
+        # 设备类型选项
+        device_type_options = {
+            DEVICE_TYPE_AC: "空调 (Air Conditioner)",
+            DEVICE_TYPE_HUMIDIFIER: "加湿器 (Humidifier)"
+        }
 
         return self.async_show_form(
             step_id="device",
             data_schema=vol.Schema({
                 vol.Required(CONF_DEVICE_ID): vol.In(available_devices),
-                vol.Required(CONF_CONTROLLER_MODEL, default="CZ-RD501DW2"): vol.In(controller_options),
-                vol.Required(CONF_SENSOR_ID): EntitySelector(
+                vol.Required(CONF_DEVICE_TYPE, default=DEVICE_TYPE_AC): vol.In(device_type_options),
+                vol.Optional(CONF_CONTROLLER_MODEL, default="CZ-RD501DW2"): vol.In(controller_options),
+                vol.Optional(CONF_SENSOR_ID): EntitySelector(
                     EntitySelectorConfig(domain="sensor")
                 ),
             }),
@@ -232,12 +270,33 @@ class PanasonicConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                         devices[dev['deviceId']] = dev['params']
                 return real_usr_id, ssid, devices
 
-    def _generate_token(self, device_id):
+    def _generate_token(self, device_id: str, device_type: str = DEVICE_TYPE_AC) -> str | None:
+        """生成设备token, 支持空调和加湿器"""
         try:
             did = device_id.upper()
-            parts = did.split('_0900_')
-            if len(parts) != 2: return None
-            stoken = parts[0][6:] + '_0900_' + parts[0][:6]
-            inner = hashlib.sha512(stoken.encode()).hexdigest()
-            return hashlib.sha512((inner + '_' + parts[1]).encode()).hexdigest()
-        except: return None
+            
+            # 空调token生成 (原有逻辑)
+            if '_0900_' in did:
+                parts = did.split('_0900_')
+                if len(parts) != 2:
+                    return None
+                stoken = parts[0][6:] + '_0900_' + parts[0][:6]
+                inner = hashlib.sha512(stoken.encode()).hexdigest()
+                return hashlib.sha512((inner + '_' + parts[1]).encode()).hexdigest()
+            
+            # 加湿器或其他设备的token生成 (通用方案)
+            # 尝试不同的分隔符
+            for sep in ['_0A00_', '_0B00_', '_0C00_', '_']:
+                if sep in did:
+                    parts = did.split(sep)
+                    if len(parts) >= 2:
+                        # 通用hash方案
+                        combined = sep.join(parts)
+                        inner = hashlib.sha512(combined.encode()).hexdigest()
+                        return hashlib.sha512((inner + '_' + parts[-1]).encode()).hexdigest()
+            
+            # 无法识别格式，使用简单hash
+            return hashlib.sha512(did.encode()).hexdigest()
+            
+        except Exception:
+            return None

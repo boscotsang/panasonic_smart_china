@@ -1,0 +1,56 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Panasonic Account Login",
+        "description": "Please enter your Panasonic Smart Home App (China) credentials.\nThe session will be cached after first login for subsequent device additions.",
+        "data": {
+          "username": "Phone Number",
+          "password": "Password"
+        }
+      },
+      "device": {
+        "title": "Configure Device",
+        "description": "Device list retrieved successfully! Please select the device and configure options.\nDevice type is auto-detected. Manually correct if needed.",
+        "data": {
+          "deviceId": "Select Device",
+          "device_type": "Device Type",
+          "controller_model": "Controller Model (AC only)",
+          "sensor_entity_id": "Temperature Sensor (AC only, optional)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Login failed: Please check credentials or network connection",
+      "no_devices_found": "No devices found: Please ensure devices are bound to your account",
+      "token_generation_failed": "Token generation failed: Invalid device ID format",
+      "all_devices_configured": "All devices have been configured"
+    },
+    "abort": {
+      "already_configured": "This device is already configured",
+      "reauth_successful": "Re-authentication successful"
+    }
+  },
+  "entity": {
+    "climate": {
+      "panasonic_ac": {
+        "name": "Panasonic AC"
+      }
+    },
+    "humidifier": {
+      "panasonic_humidifier": {
+        "name": "Panasonic Humidifier",
+        "state_attributes": {
+          "mode": {
+            "state": {
+              "auto": "Auto",
+              "continuous": "Continuous",
+              "sleep": "Sleep",
+              "interval": "Interval"
+            }
+          }
+        }
+      }
+    }
+  }
+}
