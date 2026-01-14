@@ -132,17 +132,32 @@ class PanasonicHumidifierEntity(HumidifierEntity):
             "token": self._token
         }
         
+        # 调试日志：打印请求信息
+        _LOGGER.warning(f"[DEBUG] === 开始探测API端点 ===")
+        _LOGGER.warning(f"[DEBUG] deviceId: {self._device_id}")
+        _LOGGER.warning(f"[DEBUG] usrId: {self._usr_id}")
+        _LOGGER.warning(f"[DEBUG] token前20字符: {self._token[:20] if self._token else 'None'}...")
+        _LOGGER.warning(f"[DEBUG] SSID: {self._ssid}")
+        
         # 尝试不同的API端点 (按优先级排序)
         # 松下云可能对所有设备使用统一的AC端点，也可能有专用的加湿器端点
         endpoints_to_try = [
             # 加湿器专用端点
             (URL_HUM_GET, URL_HUM_SET),
             (URL_HUM_GET_AW, URL_HUM_SET_AW),
+            # FV系列设备端点 (新风/加湿器可能使用)
+            ("https://app.psmartcloud.com/App/FVDevGetStatusInfo",
+             "https://app.psmartcloud.com/App/FVDevSetStatusInfo"),
+            ("https://app.psmartcloud.com/App/FVDevGetStatusInfoAW",
+             "https://app.psmartcloud.com/App/FVDevSetStatusInfoAW"),
             # 空调端点 (松下云可能使用统一接口)
             ("https://app.psmartcloud.com/App/ACDevGetStatusInfoAW", 
              "https://app.psmartcloud.com/App/ACDevSetStatusInfoAW"),
             # 通用设备端点
             (URL_DEV_GET, URL_DEV_SET),
+            # 更多可能的端点
+            ("https://app.psmartcloud.com/App/DevGetStatusInfoAW",
+             "https://app.psmartcloud.com/App/DevSetStatusInfoAW"),
         ]
         
         session = async_get_clientsession(self._hass)
@@ -153,19 +168,22 @@ class PanasonicHumidifierEntity(HumidifierEntity):
                     response = await session.post(get_url, json=payload, headers=headers, ssl=False)
                     json_data = await response.json()
                     
+                    # 详细日志：记录每个端点的响应
+                    _LOGGER.warning(f"[DEBUG] 尝试端点: {get_url}")
+                    _LOGGER.warning(f"[DEBUG] 响应状态: {response.status}, 内容: {json_data}")
+                    
                     error_code = json_data.get('errorCode')
                     # 检查是否为有效响应
-                    if error_code not in ['3003', '3004', '404', '500', None] or 'results' in json_data:
-                        if 'results' in json_data:
-                            self._url_get = get_url
-                            self._url_set = set_url
-                            _LOGGER.info(f"加湿器API端点探测成功: GET={get_url}")
-                            
-                            # 解析初始状态
-                            self._update_local_state(json_data['results'])
-                            return
+                    if 'results' in json_data:
+                        self._url_get = get_url
+                        self._url_set = set_url
+                        _LOGGER.info(f"加湿器API端点探测成功: GET={get_url}")
+                        
+                        # 解析初始状态
+                        self._update_local_state(json_data['results'])
+                        return
             except Exception as e:
-                _LOGGER.debug(f"尝试端点 {get_url} 失败: {e}")
+                _LOGGER.warning(f"[DEBUG] 端点 {get_url} 异常: {e}")
                 continue
         
         # 所有端点都失败，使用最常见的空调API作为默认
