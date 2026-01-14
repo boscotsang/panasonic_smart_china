@@ -100,17 +100,29 @@ class PanasonicConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
     def _detect_device_type(self, device_id: str, device_info: dict) -> str:
-        """检测设备类型：空调或加湿器"""
+        """检测设备类型：空调或加湿器
+        
+        设备ID分隔符:
+        - _0900_: 空调
+        - _0840_: 加湿器
+        """
         device_name = device_info.get("deviceName", "").lower()
-        device_id_lower = device_id.lower()
+        device_id_upper = device_id.upper()
+        
+        # 通过设备ID分隔符识别 (最可靠)
+        if "_0840_" in device_id_upper:
+            return DEVICE_TYPE_HUMIDIFIER
+        if "_0900_" in device_id_upper:
+            return DEVICE_TYPE_AC
         
         # 通过设备名称识别加湿器
-        humidifier_keywords = ["加湿", "humidifier", "hum", "湿度"]
+        humidifier_keywords = ["加湿", "humidifier", "hum", "湿度", "aircle"]
         for keyword in humidifier_keywords:
             if keyword in device_name:
                 return DEVICE_TYPE_HUMIDIFIER
         
         # 通过设备ID前缀识别(松下加湿器可能使用FV或HUM前缀)
+        device_id_lower = device_id.lower()
         humidifier_prefixes = ["fv", "hum", "fvrzm", "fvrjm"]
         for prefix in humidifier_prefixes:
             if device_id_lower.startswith(prefix):
@@ -271,29 +283,46 @@ class PanasonicConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 return real_usr_id, ssid, devices
 
     def _generate_token(self, device_id: str, device_type: str = DEVICE_TYPE_AC) -> str | None:
-        """生成设备token, 支持空调和加湿器"""
+        """生成设备token, 支持空调和加湿器
+        
+        设备ID格式: XXXXXXXXXXXX_YYYY_ZZZZZZ
+        - 空调: _0900_
+        - 加湿器: _0840_
+        - 其他可能: _0A00_, _0B00_ 等
+        
+        Token算法: SHA512(SHA512(后6位+分隔符+前6位) + '_' + 设备后缀)
+        """
         try:
             did = device_id.upper()
             
-            # 空调token生成 (原有逻辑)
-            if '_0900_' in did:
-                parts = did.split('_0900_')
-                if len(parts) != 2:
-                    return None
-                stoken = parts[0][6:] + '_0900_' + parts[0][:6]
-                inner = hashlib.sha512(stoken.encode()).hexdigest()
-                return hashlib.sha512((inner + '_' + parts[1]).encode()).hexdigest()
+            # 支持的分隔符列表 (按设备类型)
+            separators = ['_0900_', '_0840_', '_0A00_', '_0B00_', '_0C00_']
             
-            # 加湿器或其他设备的token生成 (通用方案)
-            # 尝试不同的分隔符
-            for sep in ['_0A00_', '_0B00_', '_0C00_', '_']:
+            for sep in separators:
                 if sep in did:
                     parts = did.split(sep)
-                    if len(parts) >= 2:
-                        # 通用hash方案
-                        combined = sep.join(parts)
-                        inner = hashlib.sha512(combined.encode()).hexdigest()
-                        return hashlib.sha512((inner + '_' + parts[-1]).encode()).hexdigest()
+                    if len(parts) != 2:
+                        continue
+                    
+                    prefix = parts[0]  # 如: 9C1221E32995
+                    suffix = parts[1]  # 如: Aircle-17-03
+                    
+                    # Token算法: 后6位 + 分隔符 + 前6位
+                    if len(prefix) >= 12:
+                        stoken = prefix[6:12] + sep + prefix[:6]
+                    else:
+                        stoken = prefix + sep + prefix
+                    
+                    inner = hashlib.sha512(stoken.encode()).hexdigest()
+                    return hashlib.sha512((inner + '_' + suffix).encode()).hexdigest()
+            
+            # 尝试通用分隔符 '_'
+            if '_' in did:
+                parts = did.split('_')
+                if len(parts) >= 2:
+                    # 重组为标准格式尝试
+                    combined = '_'.join(parts)
+                    return hashlib.sha512(combined.encode()).hexdigest()
             
             # 无法识别格式，使用简单hash
             return hashlib.sha512(did.encode()).hexdigest()
