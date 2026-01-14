@@ -201,9 +201,15 @@ class PanasonicHumidifierEntity(HumidifierEntity):
                     _LOGGER.error("SSID expired for humidifier.")
                     return None
                 
+                # 调试日志：打印完整API响应
+                _LOGGER.warning(f"[DEBUG] 加湿器API响应: {json_data}")
+                
                 if 'results' in json_data:
                     res = json_data['results']
                     self._last_params = res
+                    
+                    # 调试日志：打印results内容
+                    _LOGGER.warning(f"[DEBUG] 加湿器状态数据: {res}")
                     
                     if update_internal_state:
                         self._update_local_state(res)
@@ -310,16 +316,26 @@ class PanasonicHumidifierEntity(HumidifierEntity):
         
         # 4. Write
         headers = self._get_headers()
+        request_body = {
+            "id": 200,
+            "usrId": self._usr_id,
+            "deviceId": self._device_id,
+            "token": self._token,
+            "params": params
+        }
+        
+        # 调试日志：打印发送的请求
+        _LOGGER.warning(f"[DEBUG] 发送控制命令到: {self._url_set}")
+        _LOGGER.warning(f"[DEBUG] 请求参数: {request_body}")
+        
         try:
             session = async_get_clientsession(self._hass)
             async with async_timeout.timeout(10):
-                await session.post(self._url_set, json={
-                    "id": 200,
-                    "usrId": self._usr_id,
-                    "deviceId": self._device_id,
-                    "token": self._token,
-                    "params": params
-                }, headers=headers, ssl=False)
+                response = await session.post(self._url_set, json=request_body, headers=headers, ssl=False)
+                resp_json = await response.json()
+                
+                # 调试日志：打印API响应
+                _LOGGER.warning(f"[DEBUG] 控制命令响应: {resp_json}")
                 
                 # 5. 更新本地状态 (乐观更新)
                 self._update_local_state(current_params)
