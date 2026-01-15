@@ -288,44 +288,41 @@ class PanasonicConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         设备ID格式: XXXXXXXXXXXX_YYYY_ZZZZZZ
         - 空调: _0900_
         - 加湿器: _0840_
-        - 其他可能: _0A00_, _0B00_ 等
         
         Token算法: SHA512(SHA512(后6位+分隔符+前6位) + '_' + 设备后缀)
         """
         try:
-            did = device_id.upper()
-            
-            # 支持的分隔符列表 (按设备类型)
+            # 支持的分隔符列表
             separators = ['_0900_', '_0840_', '_0A00_', '_0B00_', '_0C00_']
             
             for sep in separators:
-                if sep in did:
-                    parts = did.split(sep)
-                    if len(parts) != 2:
-                        continue
+                sep_upper = sep
+                sep_lower = sep.lower()
+                
+                # 查找分隔符 (不区分大小写)
+                if sep_upper in device_id.upper():
+                    # 找到实际分隔符位置
+                    idx = device_id.upper().find(sep_upper)
+                    prefix = device_id[:idx].upper()  # prefix转大写
+                    suffix = device_id[idx + len(sep):]  # suffix保持原样
                     
-                    prefix = parts[0]  # 如: 9C1221E32995
-                    suffix = parts[1]  # 如: Aircle-17-03
+                    _LOGGER.debug(f"Token生成: prefix={prefix}, sep={sep}, suffix={suffix}")
                     
                     # Token算法: 后6位 + 分隔符 + 前6位
                     if len(prefix) >= 12:
-                        stoken = prefix[6:12] + sep + prefix[:6]
+                        stoken = prefix[6:12] + sep_upper + prefix[:6]
                     else:
-                        stoken = prefix + sep + prefix
+                        stoken = prefix[len(prefix)//2:] + sep_upper + prefix[:len(prefix)//2]
                     
                     inner = hashlib.sha512(stoken.encode()).hexdigest()
-                    return hashlib.sha512((inner + '_' + suffix).encode()).hexdigest()
-            
-            # 尝试通用分隔符 '_'
-            if '_' in did:
-                parts = did.split('_')
-                if len(parts) >= 2:
-                    # 重组为标准格式尝试
-                    combined = '_'.join(parts)
-                    return hashlib.sha512(combined.encode()).hexdigest()
+                    token = hashlib.sha512((inner + '_' + suffix).encode()).hexdigest()
+                    
+                    _LOGGER.debug(f"Token生成: stoken={stoken}, token前20={token[:20]}")
+                    return token
             
             # 无法识别格式，使用简单hash
-            return hashlib.sha512(did.encode()).hexdigest()
+            return hashlib.sha512(device_id.encode()).hexdigest()
             
-        except Exception:
+        except Exception as e:
+            _LOGGER.error(f"Token生成异常: {e}")
             return None
